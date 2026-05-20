@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile       Profile?
+  cycleLogs     CycleLog[]
+  symptoms      SymptomLog[]
+  dietLogs      DietLog[]
+  moodLogs      MoodLog[]
+  exerciseLogs  ExerciseLog[]
+  hormoneLogs   HormoneLog[]
+  medicineLogs  MedicineLog[]
+  medicines     Medicine[]
+}
+
+model Profile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  name          String
+  dateOfBirth   DateTime
+  height        Float
+  weight        Float
+  diagnosedPCOS Boolean  @default(false)
+  cycleLength   String?
+  periodLength  String?
+  primaryGoal   String?
+  activityLevel String?
+  dietaryPref   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model CycleLog {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  startDate DateTime
+  endDate   DateTime?
+  flowLevel String?
+  notes     String?
+  createdAt DateTime  @default(now())
+}
+
+model SymptomLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime
+  symptoms  String[]
+  severity  Int
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model DietLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime
+  mealType  String
+  foodItems String[]
+  calories  Int?
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model MoodLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  date        DateTime
+  mood        String
+  stressLevel Int
+  journalText String?
+  aiInsight   String?
+  createdAt   DateTime @default(now())
+}
+
+model ExerciseLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  date         DateTime
+  exerciseType String
+  duration     Int
+  intensity    String
+  notes        String?
+  createdAt    DateTime @default(now())
+}
+
+model Medicine {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  name      String
+  dosage    String
+  frequency String
+  timeOfDay String[]
+  startDate DateTime
+  endDate   DateTime?
+  isActive  Boolean       @default(true)
+  logs      MedicineLog[]
+  createdAt DateTime      @default(now())
+}
+
+model MedicineLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  medicineId String
+  medicine   Medicine @relation(fields: [medicineId], references: [id])
+  date       DateTime
+  taken      Boolean
+  createdAt  DateTime @default(now())
+}
+
+model HormoneLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime
+  lh        Float?
+  fsh       Float?
+  amh       Float?
+  estrogen  Float?
+  testosterone Float?
+  insulin   Float?
+  notes     String?
+  createdAt DateTime @default(now())
+}
