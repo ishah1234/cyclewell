@@ -24,6 +24,7 @@ model User {
   hormoneLogs   HormoneLog[]
   medicineLogs  MedicineLog[]
   medicines     Medicine[]
+  bodyLogs      BodyLog[]
 }
 
 model Profile {
@@ -141,4 +142,15 @@ model HormoneLog {
   insulin   Float?
   notes     String?
   createdAt DateTime @default(now())
+}
+
+model BodyLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime
+  hydration  Int?     // glasses of water (0-8)
+  sleep      Float?   // hours of sleep
+  energy     Int?     // energy level 1-5
+  createdAt  DateTime @default(now())
 }

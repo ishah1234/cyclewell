@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PrismaClient } from "@prisma/client";
 import Link from "next/link";
 import Anthropic from "@anthropic-ai/sdk";
+import BodySnapshot from "./BodySnapshot";
 
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -11,7 +12,7 @@ async function getAITip(cyclePhase: string, name: string) {
   try {
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
-      max_tokens: 100,
+      max_tokens: 120,
       messages: [
         {
           role: "user",
@@ -26,23 +27,32 @@ async function getAITip(cyclePhase: string, name: string) {
   }
 }
 
-function getCyclePhase(
-  lastPeriodDate: Date | null,
-  cycleLength: number,
-): {
-  phase: string;
-  day: number;
-  emoji: string;
-  color: string;
-  description: string;
-} {
+const cycleTips: Record<string, string> = {
+  Menstrual:
+    "Rest is productive during your period. Gentle heat, magnesium-rich foods, and slow movement can ease discomfort significantly.",
+  Follicular:
+    "Your rising estrogen makes this a great time to try new workouts or start a new habit — your body is primed to adapt.",
+  Ovulatory:
+    "Peak communication skills and confidence happen now. Great time for important conversations or presentations.",
+  Luteal:
+    "Cravings for complex carbs are natural now — reach for sweet potato, oats, or lentils to satisfy them nutritiously.",
+  Unknown:
+    "Logging your period helps CycleWell give you personalized phase-based tips every day.",
+};
+
+function getCycleInfo(lastPeriodDate: Date | null, cycleLength: number) {
   if (!lastPeriodDate)
     return {
       phase: "Unknown",
       day: 0,
       emoji: "🌙",
-      color: "#C17B7B",
       description: "Log your period to start tracking",
+      daysToPeriod: null,
+      daysToOvulation: null,
+      confidence: 0,
+      gradient: "linear-gradient(135deg, #C17B7B 0%, #D4978A 100%)",
+      nextPeriodDate: null,
+      nextOvulationDate: null,
     };
 
   const today = new Date();
@@ -50,37 +60,51 @@ function getCyclePhase(
     (today.getTime() - lastPeriodDate.getTime()) / (1000 * 60 * 60 * 24),
   );
   const cycleDay = (daysSince % cycleLength) + 1;
+  const ovulationDay = Math.round(cycleLength * 0.45);
+  const daysToOvulation = ovulationDay - cycleDay;
+  const daysToPeriod = cycleLength - cycleDay;
+  const nextPeriodDate = new Date(
+    lastPeriodDate.getTime() + cycleLength * 24 * 60 * 60 * 1000,
+  );
+  const nextOvulationDate =
+    daysToOvulation > 0
+      ? new Date(today.getTime() + daysToOvulation * 24 * 60 * 60 * 1000)
+      : null;
 
-  if (cycleDay <= 5)
-    return {
-      phase: "Menstrual",
-      day: cycleDay,
-      emoji: "🌑",
-      color: "#A05C5C",
-      description: "Rest and be gentle with yourself",
-    };
-  if (cycleDay <= 13)
-    return {
-      phase: "Follicular",
-      day: cycleDay,
-      emoji: "🌒",
-      color: "#C17B7B",
-      description: "Energy is rising — great time to start new things",
-    };
-  if (cycleDay <= 16)
-    return {
-      phase: "Ovulatory",
-      day: cycleDay,
-      emoji: "🌕",
-      color: "#D4978A",
-      description: "Peak energy and confidence",
-    };
+  let phase, emoji, description, gradient;
+  if (cycleDay <= 5) {
+    phase = "Menstrual";
+    emoji = "🌑";
+    description = "Rest and be gentle with yourself";
+    gradient = "linear-gradient(135deg, #8B4A4A 0%, #C17B7B 100%)";
+  } else if (cycleDay <= 13) {
+    phase = "Follicular";
+    emoji = "🌒";
+    description = "Energy is rising — great time to start new things";
+    gradient = "linear-gradient(135deg, #C17B7B 0%, #D4978A 100%)";
+  } else if (cycleDay <= 16) {
+    phase = "Ovulatory";
+    emoji = "🌕";
+    description = "Peak energy and confidence";
+    gradient = "linear-gradient(135deg, #D4978A 0%, #E8B89A 100%)";
+  } else {
+    phase = "Luteal";
+    emoji = "🌖";
+    description = "Wind down and practice self care";
+    gradient = "linear-gradient(135deg, #8C6B63 0%, #C17B7B 100%)";
+  }
+
   return {
-    phase: "Luteal",
+    phase,
     day: cycleDay,
-    emoji: "🌖",
-    color: "#8C6B63",
-    description: "Wind down and practice self care",
+    emoji,
+    description,
+    gradient,
+    daysToPeriod,
+    daysToOvulation: daysToOvulation > 0 ? daysToOvulation : null,
+    confidence: 85,
+    nextPeriodDate,
+    nextOvulationDate,
   };
 }
 
@@ -92,9 +116,10 @@ export default async function DashboardPage() {
     where: { clerkId: userId },
     include: {
       profile: true,
-      cycleLogs: { orderBy: { startDate: "desc" }, take: 1 },
+      cycleLogs: { orderBy: { startDate: "desc" }, take: 3 },
       moodLogs: { orderBy: { date: "desc" }, take: 7 },
       symptoms: { orderBy: { date: "desc" }, take: 5 },
+      medicineLogs: { orderBy: { date: "desc" }, take: 5 },
     },
   });
 
@@ -107,110 +132,130 @@ export default async function DashboardPage() {
 
   const lastPeriod = user.cycleLogs[0]?.startDate || null;
   const cycleLength = 30;
-  const cycleInfo = getCyclePhase(lastPeriod, cycleLength);
-
+  const cycleInfo = getCycleInfo(lastPeriod, cycleLength);
   const aiTip = await getAITip(cycleInfo.phase, name);
+  const cycleTip = cycleTips[cycleInfo.phase];
 
-  // Streak calculation
-  const today = new Date().toDateString();
-  const yesterday = new Date(Date.now() - 86400000).toDateString();
-  const recentMoods = user.moodLogs.map((m) => new Date(m.date).toDateString());
-  const loggedToday = recentMoods.includes(today);
-  const loggedYesterday = recentMoods.includes(yesterday);
+  const todayStr = new Date().toDateString();
+  const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+  const recentMoodDates = user.moodLogs.map((m) =>
+    new Date(m.date).toDateString(),
+  );
+  const loggedToday = recentMoodDates.includes(todayStr);
+  const loggedYesterday = recentMoodDates.includes(yesterdayStr);
   const streak = loggedToday ? (loggedYesterday ? 2 : 1) : 0;
 
-  const quickLogs = [
-    { label: "Period", emoji: "🩸", href: "/tracker/period" },
-    { label: "Mood", emoji: "🌸", href: "/tracker/mood" },
-    { label: "Medicine", emoji: "💊", href: "/tracker/medicine" },
-    { label: "Symptoms", emoji: "📋", href: "/tracker/symptoms" },
-    { label: "Exercise", emoji: "🏃", href: "/tracker/exercise" },
-    { label: "Diet", emoji: "🥗", href: "/tracker/diet" },
-    { label: "Hormones", emoji: "🔬", href: "/tracker/hormone" },
-  ];
-
-  const phaseGradients: Record<string, string> = {
-    Menstrual: "linear-gradient(135deg, #8B4A4A 0%, #C17B7B 100%)",
-    Follicular: "linear-gradient(135deg, #C17B7B 0%, #D4978A 100%)",
-    Ovulatory: "linear-gradient(135deg, #D4978A 0%, #E8B89A 100%)",
-    Luteal: "linear-gradient(135deg, #8C6B63 0%, #C17B7B 100%)",
-    Unknown: "linear-gradient(135deg, #C17B7B 0%, #D4978A 100%)",
+  const todayLogs = {
+    mood: recentMoodDates.includes(todayStr),
+    period: user.cycleLogs[0]
+      ? new Date(user.cycleLogs[0].startDate).toDateString() === todayStr
+      : false,
+    medicine: user.medicineLogs[0]
+      ? new Date(user.medicineLogs[0].date).toDateString() === todayStr
+      : false,
   };
 
+  const quickLogs = [
+    {
+      label: "Period",
+      emoji: "🩸",
+      href: "/tracker/period",
+      done: todayLogs.period,
+    },
+    { label: "Mood", emoji: "🌸", href: "/tracker/mood", done: todayLogs.mood },
+    {
+      label: "Medicine",
+      emoji: "💊",
+      href: "/tracker/medicine",
+      done: todayLogs.medicine,
+    },
+    { label: "Symptoms", emoji: "📋", href: "/tracker/symptoms", done: false },
+    { label: "Exercise", emoji: "🏃", href: "/tracker/exercise", done: false },
+    { label: "Diet", emoji: "🥗", href: "/tracker/diet", done: false },
+    { label: "Hormones", emoji: "🔬", href: "/tracker/hormone", done: false },
+  ];
+
+  const doneCount = quickLogs.filter((q) => q.done).length;
+  const dashArray = (cycleInfo.day / cycleLength) * 201;
+
   return (
-    <main className="min-h-screen" style={{ backgroundColor: "#FAF7F5" }}>
-      {/* Nav */}
+    <main style={{ backgroundColor: "#FAF7F5", minHeight: "100vh" }}>
       <nav
         style={{
-          backgroundColor: "#FFFFFF",
+          backgroundColor: "#fff",
           borderBottom: "1px solid #EDE0D8",
+          padding: "14px 20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
         }}
-        className="px-8 py-5 flex justify-between items-center sticky top-0 z-10"
       >
-        <h1
+        <span
           style={{
             fontFamily: "var(--font-playfair)",
             color: "#C17B7B",
-            fontSize: "1.4rem",
+            fontSize: "1.2rem",
             fontWeight: 600,
           }}
         >
           CycleWell
-        </h1>
-        <div className="flex items-center gap-6">
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {streak > 0 && (
-            <div
-              className="flex items-center gap-2"
+            <span
               style={{
-                backgroundColor: "#F5EAE8",
-                padding: "6px 14px",
+                background: "#F5EAE8",
+                padding: "4px 10px",
                 borderRadius: "100px",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: "#A05C5C",
               }}
             >
-              <span>🔥</span>
-              <span
-                style={{
-                  fontSize: "0.82rem",
-                  fontWeight: 600,
-                  color: "#A05C5C",
-                }}
-              >
-                {streak} day streak
-              </span>
-            </div>
+              🔥 {streak} day streak
+            </span>
           )}
-          <span style={{ color: "#B09A95", fontSize: "0.85rem" }}>
-            {new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })}
-          </span>
           <Link
             href="/sign-in"
-            style={{ color: "#B09A95", fontSize: "0.85rem" }}
+            style={{ fontSize: "0.78rem", color: "#B09A95" }}
           >
             Sign out
           </Link>
         </div>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-6 py-10 flex flex-col gap-8">
-        {/* Greeting */}
+      <div
+        style={{
+          maxWidth: "560px",
+          margin: "0 auto",
+          padding: "20px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "14px",
+        }}
+      >
         <div>
           <p
             style={{
+              fontSize: "0.78rem",
               color: "#B09A95",
-              fontSize: "0.9rem",
-              marginBottom: "4px",
+              marginBottom: "2px",
             }}
           >
-            {greeting}
+            {greeting} ·{" "}
+            {new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
           </p>
           <h2
             style={{
               fontFamily: "var(--font-playfair)",
-              fontSize: "2.2rem",
+              fontSize: "1.9rem",
               fontWeight: 700,
               color: "#2C1810",
             }}
@@ -219,62 +264,73 @@ export default async function DashboardPage() {
           </h2>
         </div>
 
-        {/* Immersive cycle card */}
+        {/* Hero cycle card */}
         <div
           style={{
-            background: phaseGradients[cycleInfo.phase],
-            borderRadius: "24px",
-            padding: "32px",
+            background: cycleInfo.gradient,
+            borderRadius: "22px",
+            padding: "22px",
             color: "white",
             position: "relative",
             overflow: "hidden",
           }}
         >
-          {/* Background decoration */}
           <div
             style={{
               position: "absolute",
-              top: "-40px",
-              right: "-40px",
-              width: "200px",
-              height: "200px",
+              top: "-25px",
+              right: "-25px",
+              width: "130px",
+              height: "130px",
               borderRadius: "50%",
-              backgroundColor: "rgba(255,255,255,0.08)",
+              backgroundColor: "rgba(255,255,255,0.07)",
             }}
           />
           <div
             style={{
               position: "absolute",
-              bottom: "-60px",
-              left: "-20px",
-              width: "160px",
-              height: "160px",
+              bottom: "-40px",
+              left: "20px",
+              width: "100px",
+              height: "100px",
               borderRadius: "50%",
-              backgroundColor: "rgba(255,255,255,0.05)",
+              backgroundColor: "rgba(255,255,255,0.04)",
             }}
           />
 
-          <div className="flex justify-between items-start relative">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span style={{ fontSize: "1.4rem" }}>{cycleInfo.emoji}</span>
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    opacity: 0.8,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                  }}
-                >
-                  {cycleInfo.phase} Phase
-                </span>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              position: "relative",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  opacity: 0.85,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  marginBottom: "6px",
+                }}
+              >
+                {cycleInfo.emoji} {cycleInfo.phase} Phase
               </div>
               {cycleInfo.day > 0 && (
-                <div style={{ marginBottom: "8px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: "6px",
+                    marginBottom: "6px",
+                  }}
+                >
                   <span
                     style={{
-                      fontSize: "4rem",
+                      fontSize: "3.2rem",
                       fontWeight: 700,
                       fontFamily: "var(--font-playfair)",
                       lineHeight: 1,
@@ -282,165 +338,291 @@ export default async function DashboardPage() {
                   >
                     {cycleInfo.day}
                   </span>
-                  <span
-                    style={{
-                      fontSize: "1rem",
-                      opacity: 0.8,
-                      marginLeft: "8px",
-                    }}
-                  >
+                  <span style={{ fontSize: "0.9rem", opacity: 0.7 }}>
                     / {cycleLength}
                   </span>
                 </div>
               )}
               <p
                 style={{
-                  fontSize: "0.9rem",
-                  opacity: 0.85,
-                  lineHeight: 1.5,
-                  maxWidth: "240px",
+                  fontSize: "0.8rem",
+                  opacity: 0.82,
+                  lineHeight: 1.4,
+                  maxWidth: "200px",
                 }}
               >
                 {cycleInfo.description}
               </p>
             </div>
 
-            {/* Cycle ring visualization */}
-            <div
-              style={{ position: "relative", width: "100px", height: "100px" }}
+            <svg
+              width="85"
+              height="85"
+              viewBox="0 0 85 85"
+              style={{ flexShrink: 0 }}
             >
-              <svg width="100" height="100" viewBox="0 0 100 100">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.2)"
-                  strokeWidth="8"
-                />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.8)"
-                  strokeWidth="8"
-                  strokeDasharray={`${(cycleInfo.day / cycleLength) * 251} 251`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 50 50)"
-                />
-                <text
-                  x="50"
-                  y="50"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill="white"
-                  fontSize="14"
-                  fontWeight="bold"
-                >
-                  Day {cycleInfo.day || "?"}
-                </text>
-              </svg>
-            </div>
+              <circle
+                cx="42.5"
+                cy="42.5"
+                r="34"
+                fill="none"
+                stroke="rgba(255,255,255,0.2)"
+                strokeWidth="6"
+              />
+              <circle
+                cx="42.5"
+                cy="42.5"
+                r="34"
+                fill="none"
+                stroke="rgba(255,255,255,0.85)"
+                strokeWidth="6"
+                strokeDasharray={`${dashArray} 214`}
+                strokeLinecap="round"
+                transform="rotate(-90 42.5 42.5)"
+              />
+              <text
+                x="42.5"
+                y="39"
+                textAnchor="middle"
+                fill="white"
+                fontSize="9"
+                fontWeight="600"
+              >
+                DAY
+              </text>
+              <text
+                x="42.5"
+                y="54"
+                textAnchor="middle"
+                fill="white"
+                fontSize="16"
+                fontWeight="700"
+              >
+                {cycleInfo.day || "?"}
+              </text>
+            </svg>
           </div>
+
+          {cycleInfo.daysToPeriod !== null && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "8px",
+                marginTop: "14px",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  background: "rgba(255,255,255,0.15)",
+                  borderRadius: "14px",
+                  padding: "10px 14px",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "1.5rem",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-playfair)",
+                  }}
+                >
+                  {cycleInfo.daysToPeriod}
+                </div>
+                <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>
+                  Days to period
+                </div>
+                {cycleInfo.nextPeriodDate && (
+                  <div style={{ fontSize: "0.65rem", opacity: 0.6 }}>
+                    {cycleInfo.nextPeriodDate.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </div>
+                )}
+              </div>
+              {cycleInfo.daysToOvulation && (
+                <div
+                  style={{
+                    background: "rgba(255,255,255,0.15)",
+                    borderRadius: "14px",
+                    padding: "10px 14px",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "1.5rem",
+                      fontWeight: 700,
+                      fontFamily: "var(--font-playfair)",
+                    }}
+                  >
+                    {cycleInfo.daysToOvulation}
+                  </div>
+                  <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>
+                    Days to ovulation
+                  </div>
+                  {cycleInfo.nextOvulationDate && (
+                    <div style={{ fontSize: "0.65rem", opacity: 0.6 }}>
+                      {cycleInfo.nextOvulationDate.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <p
+            style={{
+              fontSize: "0.65rem",
+              opacity: 0.6,
+              marginTop: "10px",
+              position: "relative",
+            }}
+          >
+            {cycleLength}-day cycle · {cycleInfo.confidence}% confidence
+          </p>
 
           <Link
             href="/tracker/period"
             style={{
               display: "inline-block",
-              marginTop: "20px",
-              backgroundColor: "rgba(255,255,255,0.2)",
+              marginTop: "12px",
+              background: "rgba(255,255,255,0.2)",
               color: "white",
-              padding: "10px 22px",
+              padding: "8px 18px",
               borderRadius: "100px",
-              fontSize: "0.85rem",
+              fontSize: "0.78rem",
               fontWeight: 600,
               textDecoration: "none",
-              backdropFilter: "blur(10px)",
               border: "1px solid rgba(255,255,255,0.3)",
+              position: "relative",
             }}
           >
             {lastPeriod ? "Update period →" : "Log period →"}
           </Link>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            {
-              label: "Cycle Day",
-              value: cycleInfo.day || "—",
-              sub: cycleInfo.phase,
-            },
-            {
-              label: "Logs Today",
-              value: loggedToday ? "✓" : "0",
-              sub: "Keep it up!",
-            },
-            {
-              label: "Day Streak",
-              value: streak || "—",
-              sub: streak > 0 ? "🔥 On fire!" : "Start today",
-            },
-          ].map((stat) => (
-            <div
-              key={stat.label}
+        {/* Quick log */}
+        <div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "10px",
+            }}
+          >
+            <span
               style={{
-                backgroundColor: "#FFFFFF",
-                border: "1px solid #EDE0D8",
-                borderRadius: "20px",
-                padding: "20px",
-                textAlign: "center",
+                fontSize: "0.68rem",
+                fontWeight: 600,
+                color: "#B09A95",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
               }}
             >
-              <p
+              Quick Log
+            </span>
+            <span
+              style={{ fontSize: "0.72rem", color: "#C17B7B", fontWeight: 500 }}
+            >
+              {doneCount}/{quickLogs.length} today
+            </span>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, 1fr)",
+              gap: "8px",
+            }}
+          >
+            {quickLogs.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
                 style={{
-                  fontSize: "1.8rem",
-                  fontWeight: 700,
-                  color: "#2C1810",
-                  fontFamily: "var(--font-playfair)",
+                  background: item.done ? "#F5EAE8" : "#fff",
+                  border: item.done ? "1px solid #C17B7B" : "1px solid #EDE0D8",
+                  borderRadius: "14px",
+                  padding: "12px 4px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "5px",
+                  textDecoration: "none",
+                  position: "relative",
                 }}
               >
-                {stat.value}
-              </p>
-              <p
-                style={{
-                  fontSize: "0.72rem",
-                  color: "#B09A95",
-                  marginTop: "2px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                {stat.label}
-              </p>
-              <p
-                style={{
-                  fontSize: "0.75rem",
-                  color: "#C17B7B",
-                  marginTop: "4px",
-                }}
-              >
-                {stat.sub}
-              </p>
-            </div>
-          ))}
+                {item.done && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "5px",
+                      right: "5px",
+                      width: "13px",
+                      height: "13px",
+                      borderRadius: "50%",
+                      background: "#C17B7B",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: "white",
+                        fontSize: "7px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      ✓
+                    </span>
+                  </div>
+                )}
+                <span style={{ fontSize: "1.3rem" }}>{item.emoji}</span>
+                <span
+                  style={{
+                    fontSize: "0.65rem",
+                    color: item.done ? "#A05C5C" : "#8C6B63",
+                    fontWeight: item.done ? 600 : 400,
+                  }}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
 
-        {/* AI tip card */}
+        {/* Body snapshot */}
+        <BodySnapshot />
+
+        {/* AI Insight */}
         <div
           style={{
-            background: "linear-gradient(135deg, #F5EAE8 0%, #FAF7F5 100%)",
+            background: "linear-gradient(135deg, #F5EAE8, #FAF7F5)",
             border: "1px solid #EDE0D8",
-            borderRadius: "20px",
-            padding: "24px",
+            borderRadius: "18px",
+            padding: "18px",
           }}
         >
-          <div className="flex items-center gap-2 mb-3">
-            <span style={{ fontSize: "1.1rem" }}>✨</span>
-            <p
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "10px",
+            }}
+          >
+            <span>✨</span>
+            <span
               style={{
-                fontSize: "0.72rem",
+                fontSize: "0.68rem",
                 fontWeight: 600,
                 color: "#B09A95",
                 textTransform: "uppercase",
@@ -448,14 +630,14 @@ export default async function DashboardPage() {
               }}
             >
               Your daily insight
-            </p>
+            </span>
             <span
               style={{
                 marginLeft: "auto",
-                fontSize: "0.7rem",
-                backgroundColor: "#FFFFFF",
+                fontSize: "0.65rem",
+                background: "#fff",
                 color: "#C17B7B",
-                padding: "3px 10px",
+                padding: "3px 8px",
                 borderRadius: "100px",
                 fontWeight: 500,
                 border: "1px solid #EDE0D8",
@@ -466,7 +648,7 @@ export default async function DashboardPage() {
           </div>
           <p
             style={{
-              fontSize: "0.95rem",
+              fontSize: "0.88rem",
               color: "#2C1810",
               lineHeight: 1.7,
               fontStyle: "italic",
@@ -477,82 +659,43 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        {/* Quick log */}
-        <div>
-          <p
-            style={{
-              fontSize: "0.72rem",
-              fontWeight: 600,
-              color: "#B09A95",
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-              marginBottom: "14px",
-            }}
-          >
-            Quick Log
-          </p>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "12px",
-            }}
-          >
-            {quickLogs.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                style={{
-                  backgroundColor: "#FFFFFF",
-                  border: "1px solid #EDE0D8",
-                  borderRadius: "16px",
-                  padding: "18px 8px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "8px",
-                  textDecoration: "none",
-                  transition: "all 0.2s",
-                }}
-              >
-                <span style={{ fontSize: "1.6rem" }}>{item.emoji}</span>
-                <span
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "#8C6B63",
-                    fontWeight: 500,
-                  }}
-                >
-                  {item.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent mood */}
+        {/* Recent moods */}
         {user.moodLogs.length > 0 && (
           <div
             style={{
-              backgroundColor: "#FFFFFF",
+              background: "#fff",
               border: "1px solid #EDE0D8",
-              borderRadius: "20px",
-              padding: "24px",
+              borderRadius: "18px",
+              padding: "18px",
             }}
           >
-            <p
+            <div
               style={{
-                fontSize: "0.72rem",
-                fontWeight: 600,
-                color: "#B09A95",
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                marginBottom: "16px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "14px",
               }}
             >
-              Recent Moods
-            </p>
-            <div className="flex gap-3">
+              <span
+                style={{
+                  fontSize: "0.68rem",
+                  fontWeight: 600,
+                  color: "#B09A95",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                }}
+              >
+                Recent Moods
+              </span>
+              <Link
+                href="/tracker/mood"
+                style={{ fontSize: "0.75rem", color: "#C17B7B" }}
+              >
+                Log today →
+              </Link>
+            </div>
+            <div style={{ display: "flex", gap: "16px" }}>
               {user.moodLogs.slice(0, 7).map((log, i) => {
                 const moodEmojis: Record<string, string> = {
                   Happy: "😊",
@@ -563,11 +706,19 @@ export default async function DashboardPage() {
                   Energetic: "⚡",
                 };
                 return (
-                  <div key={i} className="flex flex-col items-center gap-1">
-                    <span style={{ fontSize: "1.4rem" }}>
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <span style={{ fontSize: "1.3rem" }}>
                       {moodEmojis[log.mood] || "🌸"}
                     </span>
-                    <span style={{ fontSize: "0.65rem", color: "#B09A95" }}>
+                    <span style={{ fontSize: "0.62rem", color: "#B09A95" }}>
                       {new Date(log.date).toLocaleDateString("en-US", {
                         weekday: "short",
                       })}
@@ -579,19 +730,80 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Profile summary */}
+        {/* Cycle tip */}
         <div
           style={{
-            backgroundColor: "#FFFFFF",
+            background: "#fff",
             border: "1px solid #EDE0D8",
-            borderRadius: "20px",
-            padding: "24px",
+            borderRadius: "18px",
+            padding: "18px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "12px",
           }}
         >
-          <div className="flex justify-between items-center mb-4">
+          <div
+            style={{
+              width: "38px",
+              height: "38px",
+              borderRadius: "12px",
+              background: "#F5EAE8",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              fontSize: "1.2rem",
+            }}
+          >
+            🌿
+          </div>
+          <div>
+            <span
+              style={{
+                fontSize: "0.65rem",
+                fontWeight: 600,
+                color: "#C17B7B",
+                background: "#F5EAE8",
+                padding: "2px 8px",
+                borderRadius: "100px",
+                display: "inline-block",
+                marginBottom: "6px",
+              }}
+            >
+              {cycleInfo.phase.toLowerCase()}
+            </span>
             <p
               style={{
-                fontSize: "0.72rem",
+                fontSize: "0.82rem",
+                color: "#8C6B63",
+                lineHeight: 1.55,
+              }}
+            >
+              {cycleTip}
+            </p>
+          </div>
+        </div>
+
+        {/* Profile */}
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #EDE0D8",
+            borderRadius: "18px",
+            padding: "18px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "14px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.68rem",
                 fontWeight: 600,
                 color: "#B09A95",
                 textTransform: "uppercase",
@@ -599,15 +811,21 @@ export default async function DashboardPage() {
               }}
             >
               Your Profile
-            </p>
+            </span>
             <Link
               href="/onboarding"
-              style={{ fontSize: "0.8rem", color: "#C17B7B" }}
+              style={{ fontSize: "0.75rem", color: "#C17B7B" }}
             >
               Edit →
             </Link>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "14px",
+            }}
+          >
             {[
               { label: "Goal", value: user.profile.primaryGoal },
               { label: "Activity", value: user.profile.activityLevel },
@@ -617,7 +835,7 @@ export default async function DashboardPage() {
               <div key={item.label}>
                 <p
                   style={{
-                    fontSize: "0.75rem",
+                    fontSize: "0.68rem",
                     color: "#B09A95",
                     marginBottom: "2px",
                   }}
@@ -626,7 +844,7 @@ export default async function DashboardPage() {
                 </p>
                 <p
                   style={{
-                    fontSize: "0.9rem",
+                    fontSize: "0.85rem",
                     color: "#2C1810",
                     fontWeight: 500,
                   }}
