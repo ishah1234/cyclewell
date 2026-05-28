@@ -32,10 +32,11 @@ export async function POST(req: NextRequest) {
       : null;
 
     const recentMoods =
-      user?.moodLogs.map((m) => m.mood).join(", ") || "not logged";
+      user?.moodLogs.map((m: { mood: string }) => m.mood).join(", ") ||
+      "not logged";
     const recentSymptoms =
       user?.symptoms
-        .flatMap((s) => s.symptoms)
+        .flatMap((s: { symptoms: string[] }) => s.symptoms)
         .slice(0, 5)
         .join(", ") || "none logged";
     const name = user?.profile?.name?.split(" ")[0] || "there";
