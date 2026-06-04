@@ -173,6 +173,7 @@ export default async function DashboardPage() {
     { label: "Exercise", emoji: "🏃", href: "/tracker/exercise", done: false },
     { label: "Diet", emoji: "🥗", href: "/tracker/diet", done: false },
     { label: "Hormones", emoji: "🔬", href: "/tracker/hormone", done: false },
+    { label: "Insights", emoji: "✨", href: "/insights", done: false },
   ];
 
   const doneCount = quickLogs.filter((q) => q.done).length;
