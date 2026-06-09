@@ -120,6 +120,9 @@ export default async function DashboardPage() {
       moodLogs: { orderBy: { date: "desc" }, take: 7 },
       symptoms: { orderBy: { date: "desc" }, take: 5 },
       medicineLogs: { orderBy: { date: "desc" }, take: 5 },
+      exerciseLogs: { orderBy: { date: "desc" }, take: 3 },
+      dietLogs: { orderBy: { date: "desc" }, take: 3 },
+      hormoneLogs: { orderBy: { date: "desc" }, take: 3 },
     },
   });
 
@@ -136,23 +139,32 @@ export default async function DashboardPage() {
   const aiTip = await getAITip(cycleInfo.phase, name);
   const cycleTip = cycleTips[cycleInfo.phase];
 
-  const todayStr = new Date().toDateString();
+  const now = new Date();
   const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
   const recentMoodDates = user.moodLogs.map((m) =>
     new Date(m.date).toDateString(),
   );
-  const loggedToday = recentMoodDates.includes(todayStr);
+  const loggedToday = recentMoodDates.includes(now.toDateString());
   const loggedYesterday = recentMoodDates.includes(yesterdayStr);
   const streak = loggedToday ? (loggedYesterday ? 2 : 1) : 0;
 
+  const isSameDay = (date: Date) => {
+    const d = new Date(date);
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
   const todayLogs = {
-    mood: recentMoodDates.includes(todayStr),
-    period: user.cycleLogs[0]
-      ? new Date(user.cycleLogs[0].startDate).toDateString() === todayStr
-      : false,
-    medicine: user.medicineLogs[0]
-      ? new Date(user.medicineLogs[0].date).toDateString() === todayStr
-      : false,
+    mood: user.moodLogs.some((m) => isSameDay(new Date(m.date))),
+    period: user.cycleLogs.some((c) => isSameDay(new Date(c.startDate))),
+    medicine: user.medicineLogs.some((m) => isSameDay(new Date(m.date))),
+    exercise: user.exerciseLogs.some((e) => isSameDay(new Date(e.date))),
+    diet: user.dietLogs.some((d) => isSameDay(new Date(d.date))),
+    hormone: user.hormoneLogs.some((h) => isSameDay(new Date(h.date))),
+    symptoms: user.symptoms.some((s) => isSameDay(new Date(s.date))),
   };
 
   const quickLogs = [
@@ -169,10 +181,25 @@ export default async function DashboardPage() {
       href: "/tracker/medicine",
       done: todayLogs.medicine,
     },
-    { label: "Symptoms", emoji: "📋", href: "/tracker/symptoms", done: false },
-    { label: "Exercise", emoji: "🏃", href: "/tracker/exercise", done: false },
-    { label: "Diet", emoji: "🥗", href: "/tracker/diet", done: false },
-    { label: "Hormones", emoji: "🔬", href: "/tracker/hormone", done: false },
+    {
+      label: "Symptoms",
+      emoji: "📋",
+      href: "/tracker/symptoms",
+      done: todayLogs.symptoms,
+    },
+    {
+      label: "Exercise",
+      emoji: "🏃",
+      href: "/tracker/exercise",
+      done: todayLogs.exercise,
+    },
+    { label: "Diet", emoji: "🥗", href: "/tracker/diet", done: todayLogs.diet },
+    {
+      label: "Hormones",
+      emoji: "🔬",
+      href: "/tracker/hormone",
+      done: todayLogs.hormone,
+    },
     { label: "Insights", emoji: "✨", href: "/insights", done: false },
   ];
 
@@ -219,6 +246,12 @@ export default async function DashboardPage() {
               🔥 {streak} day streak
             </span>
           )}
+          <Link
+            href="/profile"
+            style={{ fontSize: "0.78rem", color: "#B09A95" }}
+          >
+            Profile
+          </Link>
           <Link
             href="/sign-in"
             style={{ fontSize: "0.78rem", color: "#B09A95" }}
@@ -814,7 +847,7 @@ export default async function DashboardPage() {
               Your Profile
             </span>
             <Link
-              href="/onboarding"
+              href="/profile"
               style={{ fontSize: "0.75rem", color: "#C17B7B" }}
             >
               Edit →
