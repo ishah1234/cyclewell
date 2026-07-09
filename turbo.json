@@ -5,7 +5,18 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**"],
+      "env": [
+        "DATABASE_URL",
+        "DIRECT_URL",
+        "CLERK_SECRET_KEY",
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_CLERK_SIGN_IN_URL",
+        "NEXT_PUBLIC_CLERK_SIGN_UP_URL",
+        "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL",
+        "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL",
+        "ANTHROPIC_API_KEY"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]
