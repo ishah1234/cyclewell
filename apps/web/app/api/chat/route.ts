@@ -66,8 +66,9 @@ Guidelines:
       messages: [{ role: "user", content: message }],
     });
 
+    const firstContent = response.content[0];
     const reply =
-      response.content[0].type === "text" ? response.content[0].text : "";
+      firstContent && firstContent.type === "text" ? firstContent.text : "";
     return NextResponse.json({ success: true, reply });
   } catch (error) {
     console.error(error);
