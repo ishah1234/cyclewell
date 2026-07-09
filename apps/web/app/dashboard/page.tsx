@@ -21,7 +21,8 @@ async function getAITip(cyclePhase: string, name: string) {
         },
       ],
     });
-    return message.content[0].type === "text" ? message.content[0].text : "";
+    const first = message.content[0];
+    return first && first.type === "text" ? first.text : "";
   } catch (error) {
     console.error("Claude API error:", error);
     return "Take a moment today to check in with your body and honor what it needs.";
@@ -137,7 +138,7 @@ export default async function DashboardPage() {
   const lastPeriod = user.cycleLogs[0]?.startDate || null;
   const cycleLength = 30;
   const cycleInfo = getCycleInfo(lastPeriod, cycleLength);
-  const aiTip = await getAITip(cycleInfo.phase, name);
+  const aiTip = await getAITip(cycleInfo.phase, name ?? "there");
   const cycleTip = cycleTips[cycleInfo.phase];
 
   const now = new Date();

@@ -30,7 +30,7 @@ interface ProfileData {
   name: string;
   height: number;
   weight: number;
-  dateOfBirth: string;
+  dateOfBirth: string | undefined;
   cycleLength: string;
   periodLength: string;
   primaryGoal: string;
@@ -79,7 +79,7 @@ export default function ProfilePage() {
             height: p.height || 0,
             weight: p.weight || 0,
             dateOfBirth: p.dateOfBirth
-              ? new Date(p.dateOfBirth).toISOString().split("T")[0]
+              ? new Date(String(p.dateOfBirth)).toISOString().split("T")[0]
               : "",
             cycleLength: p.cycleLength || "30",
             periodLength: p.periodLength || "5",

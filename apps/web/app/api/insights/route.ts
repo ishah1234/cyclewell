@@ -62,7 +62,8 @@ export async function GET() {
       if (!moods.length) return null;
       const counts: Record<string, number> = {};
       moods.forEach((m) => (counts[m] = (counts[m] || 0) + 1));
-      return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      return sorted[0]?.[0] ?? "";
     };
 
     const moodPhaseData = Object.entries(moodByPhase).map(([phase, moods]) => ({
@@ -217,7 +218,8 @@ Last 30 days data:
           },
         ],
       });
-      aiReport = msg.content[0].type === "text" ? msg.content[0].text : "";
+      const firstMsg = msg.content[0];
+      aiReport = firstMsg && firstMsg.type === "text" ? firstMsg.text : "";
     } catch (e) {
       aiReport = `${name}, your tracking data shows meaningful patterns in your cycle. Keep logging consistently to unlock deeper insights about your health.`;
     }

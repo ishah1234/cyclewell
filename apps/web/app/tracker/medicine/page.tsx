@@ -70,7 +70,7 @@ export default function MedicineTrackerPage() {
       const [hour, minute] = timeMap[time]?.split(":").map(Number) || [8, 0];
       const now = new Date();
       const reminder = new Date();
-      reminder.setHours(hour, minute, 0, 0);
+      reminder.setHours(hour ?? 8, minute ?? 0, 0, 0);
       if (reminder <= now) reminder.setDate(reminder.getDate() + 1);
       const delay = reminder.getTime() - now.getTime();
       setTimeout(() => {

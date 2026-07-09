@@ -548,7 +548,7 @@ export default function DietTrackerPage() {
             PCOS-friendly {mealType ? mealType.toLowerCase() : ""} suggestions
           </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-            {(suggestions[mealType] || suggestions.Snack).map((s) => {
+            {(suggestions[mealType] ?? suggestions["Snack"] ?? []).map((s) => {
               const clean = s.replace(/^[^\w]*/, "").trim();
               const isAdded = foodItems.includes(clean);
               return (

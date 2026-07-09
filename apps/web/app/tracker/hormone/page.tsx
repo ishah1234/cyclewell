@@ -329,7 +329,9 @@ export default function HormoneTrackerPage() {
             style={{ display: "flex", flexDirection: "column", gap: "18px" }}
           >
             {hormones.map((h, i) => {
-              const val = values[h.key] ? parseFloat(values[h.key]) : null;
+              const val = values[h.key]
+                ? parseFloat(values[h.key] ?? "0")
+                : null;
               const status = val !== null ? getStatus(h.key, val) : null;
               const markerPos =
                 val !== null ? getMarkerPosition(h.key, val) : null;
@@ -660,7 +662,7 @@ export default function HormoneTrackerPage() {
                         marginLeft: "8px",
                       }}
                     >
-                      {highValues[0].label} High
+                      {highValues[0]?.label} High
                     </span>
                   ) : loggedValues.length > 0 ? (
                     <span

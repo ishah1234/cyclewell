@@ -168,7 +168,7 @@ export default function ExerciseTrackerPage() {
     Unknown: "🌙",
   };
 
-  const tip = phaseTips[phase];
+  const tip = phaseTips[phase] ?? phaseTips["Unknown"]!;
 
   const exerciseEmojis: Record<string, string> = Object.fromEntries(
     exerciseTypes.map((e) => [e.label, e.emoji]),
