@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import Link from "next/link";
 import Anthropic from "@anthropic-ai/sdk";
 import BodySnapshot from "./BodySnapshot";
+import SignOutButton from "./SignOutButton";
 
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -252,12 +253,7 @@ export default async function DashboardPage() {
           >
             Profile
           </Link>
-          <Link
-            href="/sign-in"
-            style={{ fontSize: "0.78rem", color: "#B09A95" }}
-          >
-            Sign out
-          </Link>
+          <SignOutButton />
         </div>
       </nav>
 
