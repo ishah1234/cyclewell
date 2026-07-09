@@ -52,7 +52,7 @@ export async function GET() {
       Ovulatory: [],
       Luteal: [],
     };
-    user.moodLogs.forEach((log) => {
+    user.moodLogs.forEach((log: { date: Date; mood: string }) => {
       const phase = getPhase(new Date(log.date), lastPeriod);
       if (moodByPhase[phase]) moodByPhase[phase].push(log.mood);
     });
